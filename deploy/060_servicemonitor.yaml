@@ -2,6 +2,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: stuck-ebs-vols
+  namespace: openshift-monitoring
   labels:
     k8s-app: stuck-ebs-vols
     name: stuck-ebs-vols
