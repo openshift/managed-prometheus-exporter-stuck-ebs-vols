@@ -10,7 +10,6 @@ RESOURCELIST := servicemonitor/stuck-ebs-vols service/stuck-ebs-vols deployment/
 all: deploy/025_sourcecode.yaml deploy/030_secrets.yaml deploy/040_deployment.yaml
 
 .PHONY: check-env
-
 check-env:
 ifndef CLUSTERID
 	$(error Please set CLUSTERID)
