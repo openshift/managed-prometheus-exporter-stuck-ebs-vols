@@ -68,7 +68,7 @@ clean:
 	rm -f deploy/025_sourcecode.yaml deploy/030_secrets.yaml deploy/040_deployment.yaml
 
 .PHONY: filelist
-filelist:
+filelist: all
 	@ls -1 deploy/*.y*ml
 
 .PHONE: resourcelist
