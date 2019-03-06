@@ -32,7 +32,7 @@ deploy/025_sourcecode.yaml: $(SOURCEFILES)
 	kubectl -n openshift-monitoring create configmap stuck-ebs-vols-code --dry-run=true -o yaml $$files 1> deploy/025_sourcecode.yaml
 
 deploy/040_deployment.yaml: check-env
-	@echo "Creaging $(@)" ; \
+	@echo "Creating $(@)" ; \
 	sed \
 		-e "s/\$$IMAGE_VERSION/$(IMAGE_VERSION)/g" \
 		-e "s/\$$CLUSTERID/$$CLUSTERID/g" \
