@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stuck-ebs-vols
+  labels:
+    k8s-app: stuck-ebs-vols
+    name: stuck-ebs-vols
+spec:
+  endpoints:
+  - honorLabels: true
+    interval: 2m
+    port: http-main
+    scheme: http
+    scrapeTimeout: 2m
+    targetPort: 0
+  jobLabel: stuck-ebs-vols
+  namespaceSelector: {}
+  selector:
+    matchLabels:
+      name: stuck-ebs-vols
