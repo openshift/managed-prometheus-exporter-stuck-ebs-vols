@@ -1,7 +1,4 @@
-# need to define IMAGE_VERSION (eg, stable)
-# need to define CLUSTERID
-
-apiVersion: v1
+apiVersion: apps.openshift.io/v1
 kind: DeploymentConfig
 metadata:
   name: stuck-ebs-vols
@@ -18,9 +15,21 @@ spec:
       labels:
         name: stuck-ebs-vols
     spec:
+      initContainers:
+      - name: setupcreds
+        image: quay.io/lseelye/yq-kubectl:$INIT_IMAGE_VERSION
+        command: [ "/usr/local/bin/init.py", "-r", "/secrets/aws/config.ini", "-a", "/rawsecrets/aws_access_key_id", "-A", "/rawsecrets/aws_secret_access_key", "-o", "/secrets/aws/credentials.ini", "-c", "/config/env/CLUSTERID" ]
+        volumeMounts:
+        - name: awsrawcreds
+          mountPath: /rawsecrets
+          readOnly: true
+        - name: secrets
+          mountPath: /secrets
+        - name: envfiles
+          mountPath: /config
       containers:
       - name: "main"
-        command: ["/usr/bin/python", "/monitor/main.py"]
+        command: [ "/bin/sh", "/monitor/start.sh" ]
         workingDir: /monitor
         ports:
         - containerPort: 8080
@@ -28,13 +37,11 @@ spec:
         image: 'quay.io/jupierce/openshift-python-monitoring:$IMAGE_VERSION'
         env:
         - name: AWS_SHARED_CREDENTIALS_FILE
-          value: /secrets/aws/credentials
+          value: /secrets/aws/credentials.ini
         - name: AWS_CONFIG_FILE
-          value: /secrets/aws/config
+          value: /secrets/aws/config.ini
         - name: PYTHONPATH
           value: /openshift-python/packages:/support/packages
-        - name: CLUSTERID
-          value: $CLUSTERID
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 2
@@ -54,8 +61,11 @@ spec:
         - name: monitor-volume
           mountPath: /monitor
           readOnly: true
-        - name: credentials-volume
-          mountPath: /secrets/aws
+        - name: envfiles
+          mountPath: /config
+          readOnly: true
+        - name: secrets
+          mountPath: /secrets
           readOnly: true
       dnsPolicy: ClusterFirst
       restartPolicy: Always
@@ -65,9 +75,13 @@ spec:
       - name: monitor-volume
         configMap:
           name: stuck-ebs-vols-code
-      - name: credentials-volume
+      - name: awsrawcreds
         secret:
-          secretName: stuck-ebs-vols-credentials-volume
+          secretName: stuck-ebs-vols-aws-credentials
+      - name: secrets
+        emptyDir: {}
+      - name: envfiles
+        emptyDir: {}
   triggers:
   - type: ConfigChange
   strategy:
