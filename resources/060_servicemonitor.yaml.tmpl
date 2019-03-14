@@ -1,11 +1,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: stuck-ebs-vols
+  name: $PREFIXED_NAME
   namespace: openshift-monitoring
   labels:
-    k8s-app: stuck-ebs-vols
-    name: stuck-ebs-vols
+    k8s-app: $PREFIXED_NAME
+    name: $PREFIXED_NAME
 spec:
   endpoints:
   - honorLabels: true
@@ -14,8 +14,8 @@ spec:
     scheme: http
     scrapeTimeout: 2m
     targetPort: 0
-  jobLabel: stuck-ebs-vols
+  jobLabel: $PREFIXED_NAME
   namespaceSelector: {}
   selector:
     matchLabels:
-      name: stuck-ebs-vols
+      name: $PREFIXED_NAME
