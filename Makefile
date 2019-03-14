@@ -1,71 +1,71 @@
 SHELL := /bin/bash
+include functions.mk
+
+# Name of the exporter
+EXPORTER_NAME := stuck-ebs-vols
+# valid: deployment or daemonset
+# currently unused
+EXPORTER_TYPE := deployment
 
 # All of the source files which compose the monitor. 
 # Important note: No directory structure will be maintained
-SOURCEFILES ?= monitor/main.py
+SOURCEFILES ?= monitor/main.py monitor/start.sh
 
+# What to prefix the name of resources with?
+NAME_PREFIX ?= sre-
+SOURCE_CONFIGMAP_SUFFIX ?= -code
+CREDENITALS_SUFFIX ?= -aws-credentials
+
+MAIN_IMAGE_URI ?= quay.io/jupierce/openshift-python-monitoring
 IMAGE_VERSION ?= stable
-RESOURCELIST := servicemonitor/stuck-ebs-vols service/stuck-ebs-vols deployment/stuck-ebs-vols secret/stuck-ebs-vols-credentials-volume configmap/stuck-ebs-vols-code rolebinding/sre-stuck-ebs-vols serviceaccount/sre-stuck-ebs-vols
+INIT_IMAGE_URI ?= quay.io/lseelye/yq-kubectl
+INIT_IMAGE_VERSION ?= 1903.0.0
 
-all: deploy/025_sourcecode.yaml deploy/030_secrets.yaml deploy/040_deployment.yaml
+# Generate variables
 
-.PHONY: check-env
-check-env:
-ifndef CLUSTERID
-	$(error Please set CLUSTERID)
-endif
-ifndef AWS_REGION
-	$(error Please set AWS_REGION)
-endif
-ifndef AWS_SECRET_ACCESS_KEY
-	$(error Please set AWS_SECRET_ACCESS_KEY)
-endif
-ifndef AWS_ACCESS_KEY_ID
-	$(error Please set AWS_ACCESS_KEY_ID)
-endif
+MAIN_IMAGE ?= $(MAIN_IMAGE_URI):$(IMAGE_VERSION)
+INIT_IMAGE ?= $(INIT_IMAGE_URI):$(INIT_IMAGE_VERSION)
+
+PREFIXED_NAME ?= $(NAME_PREFIX)$(EXPORTER_NAME)
+
+AWS_CREDENTIALS_SECRET_NAME ?= $(PREFIXED_NAME)$(CREDENITALS_SUFFIX)
+SOURCE_CONFIGMAP_NAME ?= $(PREFIXED_NAME)$(SOURCE_CONFIGMAP_SUFFIX)
+SERVICEACCOUNT_NAME ?= $(PREFIXED_NAME)
+
+RESOURCELIST := servicemonitor/$(PREFIXED_NAME) service/$(PREFIXED_NAME) \
+	deploymentconfig/$(PREFIXED_NAME) secret/$(AWS_CREDENTIALS_SECRET_NAME) \
+	configmap/$(SOURCE_CONFIGMAP_NAME) rolebinding/$(PREFIXED_NAME) \
+	serviceaccount/$(SERVICEACCOUNT_NAME) clusterrole/sre-allow-read-cluster-setup \
+	CredentialsRequest/$(AWS_CREDENTIALS_SECRET_NAME)
+
+
+all: deploy/010_serviceaccount-rolebinding.yaml deploy/020-awscredentials-request.yaml deploy/025_sourcecode.yaml deploy/040_deployment.yaml deploy/050_service.yaml deploy/060_servicemonitor.yaml
+
+deploy/020-awscredentials-request.yaml: resources/020-awscredentials-request.yaml.tmpl
+	@$(call generate_file,020-awscredentials-request)
+
+deploy/010_serviceaccount-rolebinding.yaml: resources/010_serviceaccount-rolebinding.yaml.tmpl
+	@$(call generate_file,010_serviceaccount-rolebinding)
 
 deploy/025_sourcecode.yaml: $(SOURCEFILES)
-	@echo "Creating $(@)" ; \
-	for sfile in $(SOURCEFILES); do \
+	@for sfile in $(SOURCEFILES); do \
 		files="--from-file=$$sfile $$files" ; \
 	done ; \
-	kubectl -n openshift-monitoring create configmap stuck-ebs-vols-code --dry-run=true -o yaml $$files 1> deploy/025_sourcecode.yaml
+	kubectl -n openshift-monitoring create configmap $(SOURCE_CONFIGMAP_NAME) --dry-run=true -o yaml $$files 1> deploy/025_sourcecode.yaml
 
-deploy/040_deployment.yaml: check-env
-	@echo "Creating $(@)" ; \
-	sed \
-		-e "s/\$$IMAGE_VERSION/$(IMAGE_VERSION)/g" \
-		-e "s/\$$CLUSTERID/$$CLUSTERID/g" \
-	resources/040_deployment.yaml.tmpl 1> deploy/040_deployment.yaml
+deploy/040_deployment.yaml: resources/040_deployment.yaml.tmpl
+	@$(call generate_file,040_deployment)
 
-deploy/030_secrets.yaml: check-env
-	@echo "Creating $(@)" ; \
-	umask 077 ; \
-	tmpdir=$(shell mktemp -d $(self)) ; \
-	if [[ ! -d $$tmpdir ]]; then \
-		echo "Not able to create temp dir for secrets. Giving up" ;\
-		exit 1 ;\
-	fi ;\
-	echo "  Temporary dir=$$tmpdir" ; \
-	sed \
-		-e "s/\$$AWS_ACCESS_KEY_ID/$$AWS_ACCESS_KEY_ID/g" \
-		-e "s/\$$AWS_SECRET_ACCESS_KEY/$$AWS_SECRET_ACCESS_KEY/g" \
-	resources/secrets-credentials.tmpl 1> $$tmpdir/credentials ; \
-	sed \
-		-e "s/\$$AWS_REGION/$$AWS_REGION/g" \
-	resources/secrets-config.tmpl 1> $$tmpdir/config ; \
-	kubectl \
-		-n openshift-monitoring \
-		create secret generic stuck-ebs-vols-credentials-volume \
-		--dry-run=true -o yaml \
-		--from-file=$$tmpdir/credentials --from-file=$$tmpdir/config \
-		1> deploy/030_secrets.yaml ; \
-	echo "  Cleaning temp dir ($$tmpdir)" ; \
-	rm -rf $$tmpdir
+deploy/050_service.yaml: resources/050_service.yaml.tmpl
+	@$(call generate_file,050_service)
+
+deploy/060_servicemonitor.yaml: resources/060_servicemonitor.yaml.tmpl
+	@$(call generate_file,060_servicemonitor)
+
 
 .PHONY: clean
 clean:
-	rm -f deploy/025_sourcecode.yaml deploy/030_secrets.yaml deploy/040_deployment.yaml
+	rm -f deploy/*.yaml
 
 .PHONY: filelist
 filelist: all
@@ -74,3 +74,7 @@ filelist: all
 .PHONE: resourcelist
 resourcelist:
 	@echo $(RESOURCELIST)
+
+.PHONY: vardump
+vardump:
+	@echo $(SOURCE_CONFIGMAP_NAME)
