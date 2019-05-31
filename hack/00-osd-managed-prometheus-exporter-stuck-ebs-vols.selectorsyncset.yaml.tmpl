@@ -6,11 +6,22 @@ objects:
 - apiVersion: hive.openshift.io/v1alpha1
   kind: SelectorSyncSet
   metadata:
+    name: osd-managed-prometheus-exporter-stuck-ebs-vols
+  spec:
+    clusterDeploymentSelector:
+      matchLabels:
+        api.openshift.com/managed: 'true'
+    resourceApplyMode: sync
+    resources: []
+- apiVersion: hive.openshift.io/v1alpha1
+  kind: SelectorSyncSet
+  metadata:
     generation: 1
     labels:
-      managed.openshift.io/gitHash: a80351e
+      managed.openshift.io/gitHash: ${IMAGE_TAG}
+      managed.openshift.io/gitRepoName: managed-prometheus-exporter-stuck-ebs-vols
       managed.openshift.io/osd: 'true'
-    name: osd-managed-prometheus-exporter-stuck-ebs-vols
+    name: managed-prometheus-exporter-stuck-ebs-vols
   spec:
     clusterDeploymentSelector:
       matchLabels:
