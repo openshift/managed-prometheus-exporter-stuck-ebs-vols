@@ -105,7 +105,7 @@ if __name__ == '__main__':
         if filenames:
             sss_name = dirpath.replace('/','-')
             if sss_name == arguments.yaml_directory:
-                # files in the root dir, use repo-name for SSS name
+                # files in the root dir, use repo-name for SelectorSyncSet (SSS) name
                 sss_name = arguments.repo_name
             else:
                 # SSS name is based on dirpath which has the root path prefixed.. remove that prefix
