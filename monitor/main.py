@@ -43,7 +43,8 @@ def check_ebs_volumes_for_cluster(aws,clusterid):
     # get the instances that are in use by our cluster.
     instances = aws.describe_instances(Filters=[
         {
-            'Name': 'tag:clusterid', 'Values':[clusterid]
+            'Name':   'tag:kubernetes.io/cluster/' + clusterid,
+            'Values': ['owned']
         }
     ])
     normalized_clusterid = normalize_prometheus_label(clusterid)

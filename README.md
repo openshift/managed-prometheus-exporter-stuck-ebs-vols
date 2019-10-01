@@ -52,7 +52,7 @@ A total of four variables must be provided with make:
 * `AWS_REGION` - The region to make AWS API calls against
 * `AWS_ACCESS_KEY_ID` - The AWS access key ID
 * `AWS_SECRET_ACCESS_KEY` - The AWS secret access key
-* `CLUSTERID` - The identifier of the cluster. Only EBS volumes tagged `clusterid: $CLUSTERID` will be checked
+* `CLUSTERID` - The identifier of the cluster. Only EBS volumes with tag `kubernetes.io/cluster/$CLUSTERID` will be checked
 
 Optionally, a different image version can be provided with the `IMAGE_VERSION` variable. The defalt is `stable`.
 
