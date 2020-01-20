@@ -8,7 +8,7 @@ objects:
   metadata:
     generation: 1
     labels:
-      managed.openshift.io/gitHash: 103cc8c
+      managed.openshift.io/gitHash: 47f7566
       managed.openshift.io/osd: 'true'
     name: osd-managed-prometheus-exporter-stuck-ebs-vols
   spec:
@@ -161,6 +161,14 @@ objects:
               name: sre-stuck-ebs-vols
             name: sre-stuck-ebs-vols
           spec:
+            affinity:
+              nodeAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                - preference:
+                    matchExpressions:
+                    - key: node-role.kubernetes.io/infra
+                      operator: Exists
+                  weight: 1
             containers:
             - command:
               - /bin/sh
@@ -227,8 +235,6 @@ objects:
                 name: secrets
               - mountPath: /config
                 name: envfiles
-            nodeSelector:
-              node-role.kubernetes.io/infra: ''
             restartPolicy: Always
             serviceAccountName: sre-stuck-ebs-vols
             tolerations:
