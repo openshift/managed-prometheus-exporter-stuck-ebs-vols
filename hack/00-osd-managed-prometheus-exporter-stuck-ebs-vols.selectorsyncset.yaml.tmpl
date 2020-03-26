@@ -8,14 +8,15 @@ objects:
   metadata:
     generation: 1
     labels:
-      managed.openshift.io/gitHash: 47f7566
+      managed.openshift.io/gitHash: e2885eb
       managed.openshift.io/osd: 'true'
     name: osd-managed-prometheus-exporter-stuck-ebs-vols
   spec:
     clusterDeploymentSelector:
       matchLabels:
         api.openshift.com/managed: 'true'
-    resourceApplyMode: sync
+        hive.openshift.io/cluster-platform: aws
+    resourceApplyMode: Sync
     resources:
     - apiVersion: v1
       kind: ServiceAccount
