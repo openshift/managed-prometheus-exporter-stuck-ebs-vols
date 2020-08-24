@@ -8,9 +8,10 @@ import re
 import logging
 
 from sets import Set
-from prometheus_client import start_http_server, Enum
+from prometheus_client import start_http_server, Enum, Counter
 
 import boto3
+import botocore
 
 MONITOR_NAME = "sre-stuck-ebs-volume"
 PROJECT = "openshift-monitoring"
@@ -24,6 +25,8 @@ VOLUME_STATE = Enum('ebs_volume_state','EBS Volume state',["vol_name","clusterid
 # After we get a list of all volume IDs from our running instances we will run
 # a query against the API for the volumes we know about and prune as needed.
 ACTIVE_VOLUMES = Set([])
+
+BOTO_ERRS = Counter('boto_exceptions', 'The total number of boto exceptions')
 
 def normalize_prometheus_label(str):
     """
@@ -91,5 +94,13 @@ if __name__ == '__main__':
     # Start up the server to expose the metrics.
     start_http_server(8080)
     while True:
-        check_ebs_volumes_for_cluster(aws,clusterid)
-        time.sleep(60)
+        try:
+            check_ebs_volumes_for_cluster(aws,clusterid)
+        except botocore.exceptions.ClientError as err:
+            BOTO_ERRS.inc()
+            logging.error("Caught boto error")
+            logging.error('Error Message: {}'.format(err.response['Error']['Message']))
+            logging.error('Request ID: {}'.format(err.response['ResponseMetadata']['RequestId']))
+            logging.error('Http code: {}'.format(err.response['ResponseMetadata']['HTTPStatusCode']))
+        finally:
+            time.sleep(60)
