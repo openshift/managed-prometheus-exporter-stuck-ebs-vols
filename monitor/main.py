@@ -21,7 +21,7 @@ VALID_STATES = [ "attaching", "attached", "detaching", "detached" ]
 VOLUME_STATE = Enum('ebs_volume_state','EBS Volume state',["vol_name","clusterid"],
                 states = VALID_STATES)
 
-# A list (implemented as a Set) of all non-deleted volumes. 
+# A list (implemented as a Set) of all non-deleted volumes.
 # After we get a list of all volume IDs from our running instances we will run
 # a query against the API for the volumes we know about and prune as needed.
 ACTIVE_VOLUMES = Set([])
@@ -87,7 +87,7 @@ if __name__ == '__main__':
         logging.error("Expected to have CLUSTERID in environment. Exiting")
         exit(1)
     clusterid = os.environ.get("CLUSTERID")
-    
+
     aws = boto3.client('ec2')
 
     logging.info('Starting up metrics endpoint')

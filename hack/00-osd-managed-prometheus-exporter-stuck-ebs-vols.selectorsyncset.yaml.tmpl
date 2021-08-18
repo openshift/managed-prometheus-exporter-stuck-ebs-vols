@@ -6,147 +6,31 @@ objects:
 - apiVersion: hive.openshift.io/v1
   kind: SelectorSyncSet
   metadata:
-    generation: 1
-    labels:
-      managed.openshift.io/gitHash: ac6053d
-      managed.openshift.io/osd: 'true'
-    name: osd-managed-prometheus-exporter-stuck-ebs-vols
+    name: osd-${REPO_NAME}
   spec:
     clusterDeploymentSelector:
       matchLabels:
         api.openshift.com/managed: 'true'
-        hive.openshift.io/cluster-platform: aws
+    resourceApplyMode: Sync
+    resources: []
+- apiVersion: hive.openshift.io/v1
+  kind: SelectorSyncSet
+  metadata:
+    labels:
+      managed.openshift.io/gitHash: ${IMAGE_TAG}
+      managed.openshift.io/gitRepoName: ${REPO_NAME}
+      managed.openshift.io/osd: 'true'
+    name: managed-prometheus-exporter-stuck-ebs-vols
+  spec:
+    clusterDeploymentSelector:
+      matchLabels:
+        api.openshift.com/managed: 'true'
     resourceApplyMode: Sync
     resources:
     - apiVersion: v1
       kind: ServiceAccount
       metadata:
         name: sre-stuck-ebs-vols
-        namespace: openshift-monitoring
-    - apiVersion: rbac.authorization.k8s.io/v1
-      kind: RoleBinding
-      metadata:
-        name: sre-stuck-ebs-vols
-        namespace: openshift-monitoring
-      roleRef:
-        apiGroup: rbac.authorization.k8s.io
-        kind: ClusterRole
-        name: edit
-      subjects:
-      - kind: ServiceAccount
-        name: sre-stuck-ebs-vols
-        namespace: openshift-monitoring
-    - apiVersion: rbac.authorization.k8s.io/v1
-      kind: ClusterRole
-      metadata:
-        name: sre-allow-read-machine-info
-      rules:
-      - apiGroups:
-        - machine.openshift.io
-        resources:
-        - machines
-        verbs:
-        - get
-        - list
-    - apiVersion: rbac.authorization.k8s.io/v1
-      kind: RoleBinding
-      metadata:
-        name: sre-stuck-ebs-vols-read-machine-info
-        namespace: openshift-machine-api
-      roleRef:
-        apiGroup: rbac.authorization.k8s.io
-        kind: ClusterRole
-        name: sre-allow-read-machine-info
-      subjects:
-      - kind: ServiceAccount
-        name: sre-stuck-ebs-vols
-        namespace: openshift-monitoring
-    - apiVersion: cloudcredential.openshift.io/v1
-      kind: CredentialsRequest
-      metadata:
-        name: sre-stuck-ebs-vols-aws-credentials
-        namespace: openshift-monitoring
-      spec:
-        providerSpec:
-          apiVersion: cloudcredential.openshift.io/v1
-          kind: AWSProviderSpec
-          statementEntries:
-          - action:
-            - ec2:DescribeInstances
-            effect: Allow
-            resource: '*'
-        secretRef:
-          name: sre-stuck-ebs-vols-aws-credentials
-          namespace: openshift-monitoring
-    - apiVersion: v1
-      data:
-        main.py: "#!/usr/bin/python\n\nimport openshift as oc\nimport time\nimport\
-          \ os\nimport sys\nimport re\nimport logging\n\nfrom sets import Set\nfrom\
-          \ prometheus_client import start_http_server, Enum, Counter\n\nimport boto3\n\
-          import botocore\n\nMONITOR_NAME = \"sre-stuck-ebs-volume\"\nPROJECT = \"\
-          openshift-monitoring\"\nVALID_STATES = [ \"attaching\", \"attached\", \"\
-          detaching\", \"detached\" ]\n\n#clusterid is included to better support\
-          \ future Prometheus federation.\nVOLUME_STATE = Enum('ebs_volume_state','EBS\
-          \ Volume state',[\"vol_name\",\"clusterid\"],\n                states =\
-          \ VALID_STATES)\n\n# A list (implemented as a Set) of all non-deleted volumes.\
-          \ \n# After we get a list of all volume IDs from our running instances we\
-          \ will run\n# a query against the API for the volumes we know about and\
-          \ prune as needed.\nACTIVE_VOLUMES = Set([])\n\nBOTO_ERRS = Counter('boto_exceptions',\
-          \ 'The total number of boto exceptions')\n\ndef normalize_prometheus_label(str):\n\
-          \    \"\"\"\n    Prometheus labels must match /[a-zA-Z_][a-zA-Z0-9_]*/ and\
-          \ so we should coerce our data to it.\n    Source: https://prometheus.io/docs/concepts/data_model/\n\
-          \    Every invalid character will be made to be an underscore `_`.\n   \
-          \ \"\"\"\n    return re.sub(r'[^[a-zA-Z_][a-zA-Z0-9_]*]',\"_\",str,0)\n\n\
-          def check_ebs_volumes_for_cluster(aws,clusterid):\n    \"\"\"\n    Get all\
-          \ volumes from AWS, but only those in use by our cluster, then dump the\
-          \ metrics.\n    Note: It is important to filter by cluster id to prevent\
-          \ two clusters sharing\n    an account each paging for the same volume.\n\
-          \    \"\"\"\n\n    # get the instances that are in use by our cluster.\n\
-          \    instances = aws.describe_instances(Filters=[\n        {\n         \
-          \   'Name':   'tag:kubernetes.io/cluster/' + clusterid,\n            'Values':\
-          \ ['owned']\n        }\n    ])\n    normalized_clusterid = normalize_prometheus_label(clusterid)\n\
-          \n    # the volumes we've seen on this iteration. later, if we haven't seen\
-          \ a volume,\n    # we will purge it from VOLUME_STATES\n    seen_volumes\
-          \ = Set([])\n\n    # iterate through all the volumes\n    for reservation\
-          \ in instances[\"Reservations\"]:\n        for instance in reservation[\"\
-          Instances\"]:\n            for block_device_map in instance[\"BlockDeviceMappings\"\
-          ]:\n                if block_device_map[\"Ebs\"][\"Status\"] not in VALID_STATES:\n\
-          \                    logging.warning(\"clusterid='%s', vol_name='%s' in\
-          \ unknown state. Got state='%s'\",clusterid,block_device_map[\"Ebs\"][\"\
-          VolumeId\"],block_device_map[\"Ebs\"][\"Status\"])\n                else:\n\
-          \                    normalized_vol_id = normalize_prometheus_label(block_device_map[\"\
-          Ebs\"][\"VolumeId\"])\n                    # Add the volume to the set\n\
-          \                    ACTIVE_VOLUMES.add(block_device_map[\"Ebs\"][\"VolumeId\"\
-          ])\n                    seen_volumes.add(block_device_map[\"Ebs\"][\"VolumeId\"\
-          ])\n                    VOLUME_STATE.labels(normalized_vol_id,normalized_clusterid).state(block_device_map[\"\
-          Ebs\"][\"Status\"])\n\n    for inactive_volume in ACTIVE_VOLUMES - seen_volumes:\n\
-          \        logging.info(\"Removing vol_name='%s' for clusterid='%s' from Prometheus\
-          \ \",inactive_volume,clusterid)\n        VOLUME_STATE.remove(normalize_prometheus_label(inactive_volume),normalized_clusterid)\n\
-          \        ACTIVE_VOLUMES.remove(inactive_volume)\n\nif __name__ == '__main__':\n\
-          \    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')\n\
-          \    clusterid = \"\"\n    if \"AWS_CONFIG_FILE\" not in os.environ:\n \
-          \       logging.error(\"Expected to have AWS_CONFIG_FILE set in the environment.\
-          \ Exiting...\")\n        exit(1)\n    if \"AWS_SHARED_CREDENTIALS_FILE\"\
-          \ not in os.environ:\n        logging.error(\"Expected to have AWS_SHARED_CREDENTIALS_FILE\
-          \ set in the environment. Exiting...\")\n        exit(1)\n    if \"CLUSTERID\"\
-          \ not in os.environ:\n        logging.error(\"Expected to have CLUSTERID\
-          \ in environment. Exiting\")\n        exit(1)\n    clusterid = os.environ.get(\"\
-          CLUSTERID\")\n    \n    aws = boto3.client('ec2')\n\n    logging.info('Starting\
-          \ up metrics endpoint')\n    # Start up the server to expose the metrics.\n\
-          \    start_http_server(8080)\n    while True:\n        try:\n          \
-          \  check_ebs_volumes_for_cluster(aws,clusterid)\n        except botocore.exceptions.ClientError\
-          \ as err:\n            BOTO_ERRS.inc()\n            logging.error(\"Caught\
-          \ boto error\")\n            logging.error('Error Message: {}'.format(err.response['Error']['Message']))\n\
-          \            logging.error('Request ID: {}'.format(err.response['ResponseMetadata']['RequestId']))\n\
-          \            logging.error('Http code: {}'.format(err.response['ResponseMetadata']['HTTPStatusCode']))\n\
-          \        finally:\n            time.sleep(60)\n"
-        start.sh: "#!/bin/sh\n\nset -o allexport\n\nif [[ -d /config && -d /config/env\
-          \ ]]; then\n  source /config/env/*\nfi\n\nexec /usr/bin/python /monitor/main.py\
-          \ \"$@\""
-      kind: ConfigMap
-      metadata:
-        creationTimestamp: null
-        name: sre-stuck-ebs-vols-code
         namespace: openshift-monitoring
     - apiVersion: apps.openshift.io/v1
       kind: DeploymentConfig
@@ -187,7 +71,7 @@ objects:
                 value: /secrets/aws/config.ini
               - name: PYTHONPATH
                 value: /openshift-python/packages:/support/packages
-              image: quay.io/openshift-sre/managed-prometheus-exporter-base:0.1.3-5a0899dd
+              image: quay.io/openshift-sre/managed-prometheus-exporter-base:latest
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 2
@@ -232,7 +116,7 @@ objects:
               - /secrets/aws/credentials.ini
               - -c
               - /config/env/CLUSTERID
-              image: quay.io/openshift-sre/managed-prometheus-exporter-initcontainer:v0.1.9-2019-03-28-4e558131
+              image: quay.io/openshift-sre/managed-prometheus-exporter-initcontainer:latest
               name: setupcreds
               volumeMounts:
               - mountPath: /rawsecrets
@@ -261,23 +145,23 @@ objects:
               name: monitor-volume
         triggers:
         - type: ConfigChange
-    - apiVersion: v1
-      kind: Service
+    - apiVersion: cloudcredential.openshift.io/v1
+      kind: CredentialsRequest
       metadata:
-        labels:
-          name: sre-stuck-ebs-vols
-        name: sre-stuck-ebs-vols
+        name: sre-stuck-ebs-vols-aws-credentials
         namespace: openshift-monitoring
       spec:
-        ports:
-        - name: http-main
-          port: 80
-          protocol: TCP
-          targetPort: 8080
-        selector:
-          name: sre-stuck-ebs-vols
-        sessionAffinity: None
-        type: ClusterIP
+        providerSpec:
+          apiVersion: cloudcredential.openshift.io/v1
+          kind: AWSProviderSpec
+          statementEntries:
+          - action:
+            - ec2:DescribeInstances
+            effect: Allow
+            resource: '*'
+        secretRef:
+          name: sre-stuck-ebs-vols-aws-credentials
+          namespace: openshift-monitoring
     - apiVersion: monitoring.coreos.com/v1
       kind: ServiceMonitor
       metadata:
@@ -299,7 +183,130 @@ objects:
         selector:
           matchLabels:
             name: sre-stuck-ebs-vols
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: sre-allow-read-machine-info
+      rules:
+      - apiGroups:
+        - machine.openshift.io
+        resources:
+        - machines
+        verbs:
+        - get
+        - list
+    - apiVersion: v1
+      data:
+        main.py: "#!/usr/bin/python\n\nimport openshift as oc\nimport time\nimport
+          os\nimport sys\nimport re\nimport logging\n\nfrom sets import Set\nfrom
+          prometheus_client import start_http_server, Enum, Counter\n\nimport boto3\nimport
+          botocore\n\nMONITOR_NAME = \"sre-stuck-ebs-volume\"\nPROJECT = \"openshift-monitoring\"\nVALID_STATES
+          = [ \"attaching\", \"attached\", \"detaching\", \"detached\" ]\n\n#clusterid
+          is included to better support future Prometheus federation.\nVOLUME_STATE
+          = Enum('ebs_volume_state','EBS Volume state',[\"vol_name\",\"clusterid\"],\n
+          \               states = VALID_STATES)\n\n# A list (implemented as a Set)
+          of all non-deleted volumes.\n# After we get a list of all volume IDs from
+          our running instances we will run\n# a query against the API for the volumes
+          we know about and prune as needed.\nACTIVE_VOLUMES = Set([])\n\nBOTO_ERRS
+          = Counter('boto_exceptions', 'The total number of boto exceptions')\n\ndef
+          normalize_prometheus_label(str):\n    \"\"\"\n    Prometheus labels must
+          match /[a-zA-Z_][a-zA-Z0-9_]*/ and so we should coerce our data to it.\n
+          \   Source: https://prometheus.io/docs/concepts/data_model/\n    Every invalid
+          character will be made to be an underscore `_`.\n    \"\"\"\n    return
+          re.sub(r'[^[a-zA-Z_][a-zA-Z0-9_]*]',\"_\",str,0)\n\ndef check_ebs_volumes_for_cluster(aws,clusterid):\n
+          \   \"\"\"\n    Get all volumes from AWS, but only those in use by our cluster,
+          then dump the metrics.\n    Note: It is important to filter by cluster id
+          to prevent two clusters sharing\n    an account each paging for the same
+          volume.\n    \"\"\"\n\n    # get the instances that are in use by our cluster.\n
+          \   instances = aws.describe_instances(Filters=[\n        {\n            'Name':
+          \  'tag:kubernetes.io/cluster/' + clusterid,\n            'Values': ['owned']\n
+          \       }\n    ])\n    normalized_clusterid = normalize_prometheus_label(clusterid)\n\n
+          \   # the volumes we've seen on this iteration. later, if we haven't seen
+          a volume,\n    # we will purge it from VOLUME_STATES\n    seen_volumes =
+          Set([])\n\n    # iterate through all the volumes\n    for reservation in
+          instances[\"Reservations\"]:\n        for instance in reservation[\"Instances\"]:\n
+          \           for block_device_map in instance[\"BlockDeviceMappings\"]:\n
+          \               if block_device_map[\"Ebs\"][\"Status\"] not in VALID_STATES:\n
+          \                   logging.warning(\"clusterid='%s', vol_name='%s' in unknown
+          state. Got state='%s'\",clusterid,block_device_map[\"Ebs\"][\"VolumeId\"],block_device_map[\"Ebs\"][\"Status\"])\n
+          \               else:\n                    normalized_vol_id = normalize_prometheus_label(block_device_map[\"Ebs\"][\"VolumeId\"])\n
+          \                   # Add the volume to the set\n                    ACTIVE_VOLUMES.add(block_device_map[\"Ebs\"][\"VolumeId\"])\n
+          \                   seen_volumes.add(block_device_map[\"Ebs\"][\"VolumeId\"])\n
+          \                   VOLUME_STATE.labels(normalized_vol_id,normalized_clusterid).state(block_device_map[\"Ebs\"][\"Status\"])\n\n
+          \   for inactive_volume in ACTIVE_VOLUMES - seen_volumes:\n        logging.info(\"Removing
+          vol_name='%s' for clusterid='%s' from Prometheus \",inactive_volume,clusterid)\n
+          \       VOLUME_STATE.remove(normalize_prometheus_label(inactive_volume),normalized_clusterid)\n
+          \       ACTIVE_VOLUMES.remove(inactive_volume)\n\nif __name__ == '__main__':\n
+          \   logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(name)s:%(message)s')\n
+          \   clusterid = \"\"\n    if \"AWS_CONFIG_FILE\" not in os.environ:\n        logging.error(\"Expected
+          to have AWS_CONFIG_FILE set in the environment. Exiting...\")\n        exit(1)\n
+          \   if \"AWS_SHARED_CREDENTIALS_FILE\" not in os.environ:\n        logging.error(\"Expected
+          to have AWS_SHARED_CREDENTIALS_FILE set in the environment. Exiting...\")\n
+          \       exit(1)\n    if \"CLUSTERID\" not in os.environ:\n        logging.error(\"Expected
+          to have CLUSTERID in environment. Exiting\")\n        exit(1)\n    clusterid
+          = os.environ.get(\"CLUSTERID\")\n\n    aws = boto3.client('ec2')\n\n    logging.info('Starting
+          up metrics endpoint')\n    # Start up the server to expose the metrics.\n
+          \   start_http_server(8080)\n    while True:\n        try:\n            check_ebs_volumes_for_cluster(aws,clusterid)\n
+          \       except botocore.exceptions.ClientError as err:\n            BOTO_ERRS.inc()\n
+          \           logging.error(\"Caught boto error\")\n            logging.error('Error
+          Message: {}'.format(err.response['Error']['Message']))\n            logging.error('Request
+          ID: {}'.format(err.response['ResponseMetadata']['RequestId']))\n            logging.error('Http
+          code: {}'.format(err.response['ResponseMetadata']['HTTPStatusCode']))\n
+          \       finally:\n            time.sleep(60)\n"
+        start.sh: "#!/bin/sh\n\nset -o allexport\n\nif [[ -d /config && -d /config/env
+          ]]; then\n  source /config/env/*\nfi\n\nexec /usr/bin/python /monitor/main.py
+          \"$@\""
+      kind: ConfigMap
+      metadata:
+        creationTimestamp: null
+        name: sre-stuck-ebs-vols-code
+        namespace: openshift-monitoring
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        labels:
+          name: sre-stuck-ebs-vols
+        name: sre-stuck-ebs-vols
+        namespace: openshift-monitoring
+      spec:
+        ports:
+        - name: http-main
+          port: 80
+          protocol: TCP
+          targetPort: 8080
+        selector:
+          name: sre-stuck-ebs-vols
+        sessionAffinity: None
+        type: ClusterIP
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: sre-stuck-ebs-vols
+        namespace: openshift-monitoring
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: edit
+      subjects:
+      - kind: ServiceAccount
+        name: sre-stuck-ebs-vols
+        namespace: openshift-monitoring
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: sre-stuck-ebs-vols-read-machine-info
+        namespace: openshift-machine-api
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: sre-allow-read-machine-info
+      subjects:
+      - kind: ServiceAccount
+        name: sre-stuck-ebs-vols
+        namespace: openshift-monitoring
 parameters:
 - name: IMAGE_TAG
   required: true
-  value: latest
+- name: REPO_NAME
+  required: true
+  value: managed-prometheus-exporter-stuck-ebs-vols
