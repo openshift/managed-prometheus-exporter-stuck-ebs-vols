@@ -71,7 +71,7 @@ objects:
                 value: /secrets/aws/config.ini
               - name: PYTHONPATH
                 value: /openshift-python/packages:/support/packages
-              image: quay.io/openshift-sre/managed-prometheus-exporter-base:latest
+              image: quay.io/app-sre/managed-prometheus-exporter-base:latest
               imagePullPolicy: IfNotPresent
               livenessProbe:
                 failureThreshold: 2
@@ -116,7 +116,7 @@ objects:
               - /secrets/aws/credentials.ini
               - -c
               - /config/env/CLUSTERID
-              image: quay.io/openshift-sre/managed-prometheus-exporter-initcontainer:latest
+              image: quay.io/app-sre/managed-prometheus-exporter-initcontainer:latest
               name: setupcreds
               volumeMounts:
               - mountPath: /rawsecrets
