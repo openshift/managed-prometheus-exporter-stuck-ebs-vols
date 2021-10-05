@@ -7,7 +7,6 @@ import sys
 import re
 import logging
 
-from sets import Set
 from prometheus_client import start_http_server, Enum, Counter
 
 import boto3
@@ -24,7 +23,7 @@ VOLUME_STATE = Enum('ebs_volume_state','EBS Volume state',["vol_name","clusterid
 # A list (implemented as a Set) of all non-deleted volumes.
 # After we get a list of all volume IDs from our running instances we will run
 # a query against the API for the volumes we know about and prune as needed.
-ACTIVE_VOLUMES = Set([])
+ACTIVE_VOLUMES = set([])
 
 BOTO_ERRS = Counter('boto_exceptions', 'The total number of boto exceptions')
 
@@ -54,7 +53,7 @@ def check_ebs_volumes_for_cluster(aws,clusterid):
 
     # the volumes we've seen on this iteration. later, if we haven't seen a volume,
     # we will purge it from VOLUME_STATES
-    seen_volumes = Set([])
+    seen_volumes = set([])
 
     # iterate through all the volumes
     for reservation in instances["Reservations"]:
