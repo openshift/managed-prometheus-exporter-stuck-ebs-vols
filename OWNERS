@@ -1,9 +1,16 @@
 reviewers:
 - cblecker
 - jharrington22
+- dkeohane
+- mrWinston
+- macgregor
+- AlexVulaj
 approvers:
 - cblecker
 - jharrington22
+- dkeohane
+- macgregor
+- kbater
 maintainers:
 - cblecker
 - jharrington22
