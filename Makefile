@@ -102,3 +102,7 @@ resourcelist:
 git-commit-sss-template:
 	git add ${SELECTOR_SYNC_SET_DESTINATION}
 	git commit -m "Updated selectorsynceset template added"
+
+.PHONY: lint
+lint:
+	tox
