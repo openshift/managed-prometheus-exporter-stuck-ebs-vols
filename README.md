@@ -40,6 +40,7 @@ The query `min_over_time(ebs_volume_state{ebs_volume_state="attaching"}[5m]) == 
 This service requires these read-only IAM roles:
 
 * `ec2:DescribeInstances`
+* `ec2:DescribeVolumes`
 
 ## Installation Process
 

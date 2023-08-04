@@ -17,7 +17,7 @@ PROJECT = "openshift-monitoring"
 VALID_STATES = [ "attaching", "attached", "detaching", "detached" ]
 
 #clusterid is included to better support future Prometheus federation.
-VOLUME_STATE = Enum('ebs_volume_state','EBS Volume state',["vol_name","clusterid"],
+VOLUME_STATE = Enum('ebs_volume_state','EBS Volume state',["vol_name","clusterid","namespace","instance_id"],
                 states = VALID_STATES)
 
 # A list (implemented as a Set) of all non-deleted volumes.
@@ -62,11 +62,19 @@ def check_ebs_volumes_for_cluster(aws,clusterid):
                 if block_device_map["Ebs"]["Status"] not in VALID_STATES:
                     logging.warning("clusterid='%s', vol_name='%s' in unknown state. Got state='%s'",clusterid,block_device_map["Ebs"]["VolumeId"],block_device_map["Ebs"]["Status"])
                 else:
+                    # Get tags on the EBS volume for namespace
+                    namespace = ""
+                    volume_response = aws.describe_volumes(VolumeIds=[block_device_map["Ebs"]["VolumeId"]])
+                    tags = volume_response["Volumes"][0]["Tags"]
+                    for tag in tags:
+                        if tag['Key'] == "kubernetes.io/created-for/pvc/namespace":
+                            namespace = tag['Value']
+                    
                     normalized_vol_id = normalize_prometheus_label(block_device_map["Ebs"]["VolumeId"])
                     # Add the volume to the set
                     ACTIVE_VOLUMES.add(block_device_map["Ebs"]["VolumeId"])
                     seen_volumes.add(block_device_map["Ebs"]["VolumeId"])
-                    VOLUME_STATE.labels(normalized_vol_id,normalized_clusterid).state(block_device_map["Ebs"]["Status"])
+                    VOLUME_STATE.labels(normalized_vol_id,normalized_clusterid,namespace,instance["InstanceID"]).state(block_device_map["Ebs"]["Status"])
 
     for inactive_volume in ACTIVE_VOLUMES - seen_volumes:
         logging.info("Removing vol_name='%s' for clusterid='%s' from Prometheus ",inactive_volume,clusterid)
